@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14
+    restart: always
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "Danish@321"
+      POSTGRES_DB: "postgres_compress"
+    ports:
+      - "5432:5432"
+    volumes:
+      - compress_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  compress-crm:
+    build: .
+    ports:
+      - "8003:8003"
+    environment:
+      NODE_ENV: production
+
+      # Writer DB config
+      PGHOST_WRITER: db
+      PGPORT_WRITER: 5432
+      PGUSER_WRITER: postgres
+      PGPASSWORD_WRITER: Danish@321
+      PGDATABASE_WRITER: postgres_compress
+
+      # Reader DB config
+      PGHOST_READER: db
+      PGPORT_READER: 5432
+      PGUSER_READER: postgres
+      PGPASSWORD_READER: Danish@321
+      PGDATABASE_READER: postgres_compress
+
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/usr/src/app/uploads
+      - ./config:/usr/src/app/config
+
+volumes:
+  compress_pgdata:
