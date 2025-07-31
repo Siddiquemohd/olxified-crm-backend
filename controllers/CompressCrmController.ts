@@ -25,7 +25,22 @@ import {
 } from "./Validations";
 import { tokenBlacklist } from "../utils/tokenBlacklisted";
 const SECRET_KEY = "your_secret_key";
+export const createCategorySchema = Yup.object().shape({
+  name: Yup.string().required('Name is required'),
+});
 
+export const updateCategorySchema = Yup.object().shape({
+  id: Yup.string().uuid().required('ID is required'),
+  name: Yup.string().required('Name is required'),
+});
+
+export const getCategoryByIdSchema = Yup.object().shape({
+  id: Yup.string().uuid().required('ID is required'),
+});
+
+export const deleteCategorySchema = Yup.object().shape({
+  id: Yup.string().uuid().required('ID is required'),
+});
 
 export default class CompressCrmController extends BaseController {
 
@@ -1191,5 +1206,326 @@ export default class CompressCrmController extends BaseController {
       }
     }
   };
+  //Category
+  public CreateCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      await createCategorySchema.validate(req.body, { abortEarly: false });
+
+      const { name } = req.body;
+
+      const query = `
+      INSERT INTO category (name)
+      VALUES (:name)
+      RETURNING id, name;
+    `;
+
+      const [rows] = await this.db_services.sequelizeWriter.query(query, {
+        replacements: { name },
+        type: QueryTypes.INSERT,
+      }) as unknown as [any[], unknown];
+
+      const category = rows[0];
+      this.sendSuccess(res, category, "Category created successfully", 201);
+    } catch (err) {
+      if (err instanceof Yup.ValidationError) {
+        this.sendError(res, {}, err.errors.join(", "), 400);
+      } else {
+        logger.error("Create category error:", { error: err });
+        this.sendError(res, err, "Server error", 500);
+      }
+    }
+  };
+  public getCategoryById = async (req: Request, res: Response): Promise<void> => {
+    try {
+      await getCategoryByIdSchema.validate(req.body, { abortEarly: false });
+
+      const { id } = req.body;
+
+      const query = `
+      SELECT id, name
+      FROM category
+      WHERE id = :id
+    `;
+
+      const result = await this.db_services.sequelizeWriter.query(query, {
+        replacements: { id },
+        type: QueryTypes.SELECT,
+      });
+
+      if (result.length === 0) {
+        this.sendError(res, {}, "Category not found", 404);
+        return;
+      }
+
+      this.sendSuccess(res, result[0], "Category retrieved successfully", 200);
+    } catch (err) {
+      if (err instanceof Yup.ValidationError) {
+        this.sendError(res, {}, err.errors.join(", "), 400);
+      } else {
+        logger.error("Get category error:", { error: err });
+        this.sendError(res, err, "Server error", 500);
+      }
+    }
+  };
+  public getAllCategories = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const query = `SELECT id, name FROM category ORDER BY id ASC`;
+
+      const result = await this.db_services.sequelizeWriter.query(query, {
+        type: QueryTypes.SELECT,
+      });
+
+      this.sendSuccess(res, result, "All categories retrieved", 200);
+    } catch (err) {
+      logger.error("Fetch all categories error:", { error: err });
+      this.sendError(res, err, "Server error", 500);
+    }
+  };
+  public updateCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      await updateCategorySchema.validate(req.body, { abortEarly: false });
+
+      const { id, name } = req.body;
+
+      const query = `
+      UPDATE category
+      SET name = :name
+      WHERE id = :id
+      RETURNING id, name;
+    `;
+
+      const [rows] = await this.db_services.sequelizeWriter.query(query, {
+        replacements: { id, name },
+        type: QueryTypes.UPDATE,
+      }) as unknown as [any[], unknown]; // 👈 assert the expected result
+
+      if (rows.length === 0) {
+        this.sendError(res, {}, "Category not found", 404);
+        return;
+      }
+
+      this.sendSuccess(res, rows[0], "Category updated successfully", 200);
+    } catch (err) {
+      if (err instanceof Yup.ValidationError) {
+        this.sendError(res, {}, err.errors.join(", "), 400);
+      } else {
+        logger.error("Update category error:", { error: err });
+        this.sendError(res, err, "Server error", 500);
+      }
+    }
+  };
+  public deleteCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      await deleteCategorySchema.validate(req.body, { abortEarly: false });
+
+      const { id, name } = req.body;
+
+      // Validate: at least one field must be present
+      if (!id && !name) {
+        this.sendError(res, {}, "Either 'id' or 'name' is required", 400);
+        return;
+      }
+
+      // Dynamically build conditions
+      let condition = "";
+      const replacements: any = {};
+
+      if (id) {
+        condition += "id = :id";
+        replacements.id = id;
+      }
+
+      if (name) {
+        condition += (condition ? " AND " : "") + `"name" = :name`; // double quotes for PostgreSQL column
+        replacements.name = name;
+      }
+
+      const query = `
+      DELETE FROM category
+      WHERE ${condition}
+      RETURNING id, "name";
+    `;
+
+      const [result] = await this.db_services.sequelizeWriter.query(query, {
+        replacements,
+        type: QueryTypes.RAW,
+      }) as [any[], unknown];
+
+      if (!result.length) {
+        this.sendError(res, {}, "Category not found", 404);
+        return;
+      }
+
+      this.sendSuccess(
+        res,
+        { deleted: result },
+        "Category deleted successfully",
+        200
+      );
+    } catch (err) {
+      if (err instanceof Yup.ValidationError) {
+        this.sendError(res, {}, err.errors.join(", "), 400);
+      } else {
+        logger.error("Delete category error:", { error: err });
+        this.sendError(res, err, "Server error", 500);
+      }
+    }
+  };
+  //Sub Category
+
+  public createSubCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { name, category_id } = req.body;
+
+      if (!name || !category_id) {
+        return this.sendError(res, {}, 'Name and Category ID are required', 400);
+      }
+
+      const query = `
+      INSERT INTO sub_category (name, category_id)
+      VALUES (:name, :category_id)
+      RETURNING id, name, category_id;
+    `;
+
+      const [rows]: [any[], unknown] = await this.db_services.sequelizeWriter.query(query, {
+        replacements: { name, category_id },
+        type: QueryTypes.RAW, // ✅ use RAW to get returning rows
+      });
+
+      const inserted = rows?.[0];
+
+      this.sendSuccess(res, inserted, 'SubCategory created successfully', 201);
+    } catch (err) {
+      logger.error('Create subcategory error:', { error: err });
+      this.sendError(res, err, 'Failed to create subcategory', 500);
+    }
+  };
+
+  public getAllSubCategories = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const query = `
+      SELECT 
+        s.id,
+        s.name,
+        s.category_id,
+        c.name AS category_name
+      FROM sub_category s
+      JOIN category c ON s.category_id = c.id
+      ORDER BY s.name ASC;
+    `;
+
+      const result = await this.db_services.sequelizeWriter.query(query, {
+        type: QueryTypes.SELECT,
+      });
+
+      this.sendSuccess(res, result, 'SubCategories retrieved successfully', 200);
+    } catch (err) {
+      logger.error('Fetch all subcategories error:', { error: err });
+      this.sendError(res, err, 'Server error', 500);
+    }
+  };
+
+  public getSubCategoryById = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+
+      const query = `
+      SELECT 
+        s.id,
+        s.name,
+        s.category_id,
+        c.name AS category_name
+      FROM sub_category s
+      JOIN category c ON s.category_id = c.id
+      WHERE s.id = :id;
+    `;
+
+      const [result] = await this.db_services.sequelizeWriter.query(query, {
+        replacements: { id },
+        type: QueryTypes.SELECT,
+      });
+
+      if (!result) {
+        return this.sendError(res, {}, 'SubCategory not found', 404);
+      }
+
+      this.sendSuccess(res, result, 'SubCategory fetched successfully', 200);
+    } catch (err) {
+      logger.error('Fetch subcategory by ID error:', { error: err });
+      this.sendError(res, err, 'Server error', 500);
+    }
+  };
+
+  public updateSubCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id, sub_category, category_id } = req.body;
+
+      if (!id || !sub_category || !category_id) {
+        return this.sendError(res, {}, 'ID, Sub Category and Category ID are required', 400);
+      }
+
+      const query = `
+      UPDATE sub_category
+      SET name = :sub_category, category_id = :category_id
+      WHERE id = :id
+      RETURNING id, name, category_id;
+    `;
+
+      const [result]: [any[], unknown] = await this.db_services.sequelizeWriter.query(query, {
+        replacements: { id, sub_category, category_id },
+        type: QueryTypes.RAW, // ✅ FIXED HERE
+      });
+
+      if (!result || result.length === 0) {
+        return this.sendError(res, {}, 'SubCategory not found or update failed', 404);
+      }
+
+      this.sendSuccess(res, result[0], 'SubCategory updated successfully', 200);
+    } catch (err) {
+      logger.error('Update subcategory error:', { error: err });
+      this.sendError(res, err, 'Server error', 500);
+    }
+  };
+
+
+
+
+  public deleteSubCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.body; // ✅ FIXED: use body instead of params
+
+      if (!id) {
+        return this.sendError(res, {}, 'SubCategory ID is required', 400);
+      }
+
+      const query = `
+      DELETE FROM sub_category
+      WHERE id = :id
+      RETURNING id;
+    `;
+
+      const [rows]: [any[], unknown] = await this.db_services.sequelizeWriter.query(query, {
+        replacements: { id },
+        type: QueryTypes.RAW,
+      });
+
+      if (!rows || rows.length === 0) {
+        return this.sendError(res, {}, 'SubCategory not found or delete failed', 404);
+      }
+
+      this.sendSuccess(res, rows[0], 'SubCategory deleted successfully', 200);
+    } catch (err) {
+      logger.error('Delete subcategory error:', { error: err });
+      this.sendError(res, err, 'Server error', 500);
+    }
+  };
+
+
+
+
+
+
+
+
 }
 

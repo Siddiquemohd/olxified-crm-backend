@@ -10,7 +10,7 @@ console.clear();
 
 const app: Express = express();
 const port = Number(process.env.COMPRESS_CRM_PORT) || 3000; // fallback port
-const localIp = "192.168.1.15"; // Your local IP address
+const localIp = "192.168.1.3"; // Your local IP address
 
 // Initialize Sentry
 Sentry.init({
@@ -38,7 +38,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 
 // Routes
-app.use("/api/v1/compresscrm", SystemuserRouter);
+app.use("/api/v1/olxified", SystemuserRouter);
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Express + TypeScript server is running.");
