@@ -10,7 +10,7 @@ console.clear();
 
 const app: Express = express();
 const port = Number(process.env.COMPRESS_CRM_PORT) || 3000; // fallback port
-const localIp = "192.168.1.3"; // Your local IP address
+const localIp = "192.168.0.105"; // Your local IP address
 
 // Initialize Sentry
 Sentry.init({

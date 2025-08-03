@@ -1,6 +1,8 @@
 import express from "express";
 import SytemuserController from "../controllers/CompressCrmController";
 import { SystemuserRouter } from ".";
+import { upload } from "../middlewares/upload";
+
 
 const SytemuserRouter = express.Router();
 const sytemuserController = new SytemuserController();
@@ -34,4 +36,25 @@ SytemuserRouter.route("/createsubcategory").post(sytemuserController.createSubCa
 SytemuserRouter.route("/getallsubcategories").get(sytemuserController.getAllSubCategories);
 SytemuserRouter.route("/updatesubcategory").post(sytemuserController.updateSubCategory);
 SytemuserRouter.route("/deletesubcategory").post(sytemuserController.deleteSubCategory);
+SytemuserRouter.post(
+    "/createverification",
+    upload.single("file"), // ✅ Multer middleware
+    sytemuserController.createVerification.bind(sytemuserController)
+);
+SytemuserRouter.post(
+    "/updateverification",
+    sytemuserController.updateVerification.bind(sytemuserController)
+);
+
+
+
+SytemuserRouter.get(
+    "/getallverifications",
+    sytemuserController.getAllVerifications.bind(sytemuserController)
+);
+
+SytemuserRouter.post(
+    "/deleteverification",
+    sytemuserController.deleteVerification.bind(sytemuserController)
+);
 export default SytemuserRouter;

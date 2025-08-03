@@ -7,6 +7,7 @@ import bcrypt from "bcrypt";
 import "../config/production/env_config";
 import speakeasy from "speakeasy";
 import jwt from "jsonwebtoken";
+import fs from 'fs';
 import qrcode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
 import * as Yup from "yup";
@@ -1487,9 +1488,6 @@ export default class CompressCrmController extends BaseController {
     }
   };
 
-
-
-
   public deleteSubCategory = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.body; // ✅ FIXED: use body instead of params
@@ -1523,9 +1521,172 @@ export default class CompressCrmController extends BaseController {
 
 
 
+  //Varification 
+  public async createVerification(req: Request, res: Response): Promise<void> {
+    try {
+      const { title, description } = req.body;
+      const file = req.file;
 
+      if (!file) {
+        return this.sendError(res, 'Please upload an image or video file', 'No file provided', 400);
+      }
+
+      const isImage = file.mimetype.startsWith('image');
+      const isVideo = file.mimetype.startsWith('video');
+
+      if (!isImage && !isVideo) {
+        return this.sendError(res, 'Only image or video files are allowed', 'Invalid file type', 400);
+      }
+
+      const image = isImage ? file.filename : null;
+      const video = isVideo ? file.filename : null;
+
+      const result: any = await this.db_services.sequelizeWriter.query(
+        `INSERT INTO verification (title, description, image, video)
+       VALUES (:title, :description, :image, :video)
+       RETURNING *`,
+        {
+          replacements: { title, description, image, video },
+          type: QueryTypes.SELECT
+        }
+      );
+
+      this.sendSuccess(res, result[0], 'Verification created successfully');
+    } catch (err) {
+      this.sendError(res, 'Failed to create verification', (err as Error).message);
+    }
+  }
+
+  public async getAllVerifications(_req: Request, res: Response): Promise<void> {
+    try {
+      const result = await this.db_services.sequelizeReader.query(
+        `SELECT id, title, description, image, video, status FROM verification ORDER BY created_at DESC`,
+        { type: QueryTypes.SELECT }
+      );
+      this.sendSuccess(res, result, 'Verification fetched successfully');
+    } catch (err) {
+      this.sendError(res, 'Failed to fetch verification', (err as Error).message);
+    }
+  }
+
+
+  public async getVerificationById(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const result: any = await this.db_services.sequelizeReader.query(
+        `SELECT * FROM verification WHERE id = :id`,
+        {
+          replacements: { id },
+          type: QueryTypes.SELECT // ✅ Use static import
+        }
+      );
+
+      if (!result.length) {
+        return this.sendError(res, 'Verification not found', 'No record found', 404);
+
+      }
+
+      this.sendSuccess(res, result[0], 'Verification fetched successfully');
+    } catch (err) {
+      this.sendError(res, 'Failed to fetch verification', (err as Error).message);
+    }
+  }
+
+
+  public async updateVerification(req: Request, res: Response): Promise<void> {
+    try {
+      const { id, status } = req.body;
+
+      if (!id || !['Approved', 'Rejected'].includes(status)) {
+        return this.sendError(
+          res,
+          'Invalid input',
+          'Verification ID and valid status (Approved or Rejected) are required',
+          400
+        );
+      }
+
+      // Check if the record exists
+      const existing: any = await this.db_services.sequelizeReader.query(
+        `SELECT * FROM verification WHERE id = :id`,
+        {
+          replacements: { id },
+          type: QueryTypes.SELECT,
+        }
+      );
+
+      if (!existing.length) {
+        return this.sendError(res, 'Verification not found', 'Verification not found', 404);
+      }
+
+      // Update only the status field
+      const result: any = await this.db_services.sequelizeWriter.query(
+        `UPDATE verification 
+       SET status = :status, updated_at = NOW()
+       WHERE id = :id
+       RETURNING *`,
+        {
+          replacements: { id, status },
+          type: QueryTypes.SELECT,
+        }
+      );
+
+      this.sendSuccess(res, result[0], `Verification ${status.toLowerCase()} successfully`);
+    } catch (err) {
+      this.sendError(res, 'Failed to update verification', (err as Error).message);
+    }
+  }
+
+
+
+
+  public async deleteVerification(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const existing: any = await this.db_services.sequelizeReader.query(
+        `SELECT * FROM verification WHERE id = :id`,
+        {
+          replacements: { id },
+          type: QueryTypes.SELECT // ✅ FIXED
+        }
+      );
+
+      if (!existing.length) {
+        return this.sendError(res, 'Verification not found', 'No record found', 404);
+
+      }
+
+      const { image, video } = existing[0];
+      if (image && fs.existsSync(`uploads/${image}`)) fs.unlinkSync(`uploads/${image}`);
+      if (video && fs.existsSync(`uploads/${video}`)) fs.unlinkSync(`uploads/${video}`);
+
+      await this.db_services.sequelizeWriter.query(
+        `DELETE FROM verification WHERE id = :id`,
+        {
+          replacements: { id },
+          type: QueryTypes.DELETE // ✅ FIXED
+        }
+      );
+
+      this.sendSuccess(res, {}, 'Verification deleted successfully'); // ✅ Added message
+    } catch (err) {
+      this.sendError(res, 'Failed to delete verification', (err as Error).message); // ✅ Typed error
+    }
+  }
 
 
 
 }
+
+
+
+
+
+
+
+
+
+
 
