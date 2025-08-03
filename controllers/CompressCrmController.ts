@@ -1643,38 +1643,41 @@ export default class CompressCrmController extends BaseController {
 
   public async deleteVerification(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
+      const { id } = req.body;
 
-      const existing: any = await this.db_services.sequelizeReader.query(
+      if (!id) {
+        res.status(400).json({ success: false, message: "Verification ID is required" });
+        return;
+      }
+
+      const existing: any[] = await this.db_services.sequelizeReader.query(
         `SELECT * FROM verification WHERE id = :id`,
         {
           replacements: { id },
-          type: QueryTypes.SELECT // ✅ FIXED
+          type: QueryTypes.SELECT
         }
       );
 
-      if (!existing.length) {
-        return this.sendError(res, 'Verification not found', 'No record found', 404);
-
+      if (existing.length === 0) {
+        res.status(404).json({ success: false, message: "Verification not found" });
+        return;
       }
-
-      const { image, video } = existing[0];
-      if (image && fs.existsSync(`uploads/${image}`)) fs.unlinkSync(`uploads/${image}`);
-      if (video && fs.existsSync(`uploads/${video}`)) fs.unlinkSync(`uploads/${video}`);
 
       await this.db_services.sequelizeWriter.query(
         `DELETE FROM verification WHERE id = :id`,
         {
           replacements: { id },
-          type: QueryTypes.DELETE // ✅ FIXED
+          type: QueryTypes.DELETE
         }
       );
 
-      this.sendSuccess(res, {}, 'Verification deleted successfully'); // ✅ Added message
+      res.status(200).json({ success: true, message: "Verification deleted successfully" });
+
     } catch (err) {
-      this.sendError(res, 'Failed to delete verification', (err as Error).message); // ✅ Typed error
+      this.sendError(res, "Failed to delete verification", (err as Error).message);
     }
   }
+
 
 
 
